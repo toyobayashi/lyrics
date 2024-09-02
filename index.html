@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lyrics</title>
+</head>
+<body>
+  <input id="lrc" type="file" name="lrc">
+  <input id="sound" type="file" name="sound">
+  <video id="soundVideo" controls autoplay></video>
+
+  <div id="lrcArea">
+
+  </div>
+
+  <script>
+    const lrcInput = document.getElementById('lrc')
+    const soundInput = document.getElementById('sound')
+    const soundVideo = document.getElementById('soundVideo')
+    const lrcArea = document.getElementById('lrcArea')
+
+    const decoder = new TextDecoder('shift-jis')
+    const encoder = new TextEncoder('shift-jis')
+
+    let lrcData = []
+    let cursor = { row: 0, col: 0 }
+
+    soundInput.addEventListener('change', (e) => {
+      const sound = e.target.files[0]
+      soundVideo.src = URL.createObjectURL(sound)
+    })
+
+    lrcInput.addEventListener('change', (e) => {
+      const lrc = e.target.files[0]
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const lrcText = decoder.decode(new Uint8Array(e.target.result))
+        const lrcLines = lrcText.split(/\r?\n/).filter((data) => data !== '')
+        console.log(lrcLines)
+        lrcData = lrcLines.map(line => {
+          let word = ''
+          const lineBlocks = []
+          for (let i = 0; i < line.length; ++i) {
+            const code = line.charCodeAt(i)
+            if (code < 0x20 || code > 0x7e) {
+              lineBlocks.push({ word: word + line.slice(i, i + 1) })
+              word = ''
+            } else {
+              if (code === 32) {
+                if (word.trim() === '') {
+                  word += ' '
+                } else {
+                  lineBlocks.push({ word })
+                  word = ' '
+                }
+              } else {
+                word += line.slice(i, i + 1)
+              }
+            }
+
+          }
+          if (word.length > 0 && word.trim() !== '') {
+            lineBlocks.push({ word })
+            word = ''
+          }
+
+          return lineBlocks
+        })
+        console.log(lrcData)
+        
+        
+        lrcArea.innerHTML = ''
+        lrcData.forEach((line) => {
+          const p = document.createElement('p')
+          line.forEach((block) => {
+            const span = document.createElement('span')
+            span.style.display = 'inline-block'
+            span.style.border = '1px solid black'
+            span.style.padding = '8px'
+            span.textContent = block.word
+            p.appendChild(span)
+          })
+          lrcArea.appendChild(p)
+        })
+      }
+      reader.readAsArrayBuffer(lrc)
+    })
+
+    const isVideoPlaying = video => Boolean(video.currentTime > 0 && !video.paused && !video.ended && video.readyState > 2);
+    const timeToString = time => `${`0${Math.floor(time / 60)}`.slice(-2)}:${`0${Math.floor(time % 60)}`.slice(-2)}:${`0${Math.floor((time % 1) * 100)}`.slice(-2)}`
+    const stringToTime = string => {
+      const [min, sec, ms] = string.split(':').map(Number)
+      return min * 60 + sec + ms / 100
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight') {
+        if (!isVideoPlaying(soundVideo) || lrcData.length === 0) return
+        const currentTime = soundVideo.currentTime
+        lrcArea.children[cursor.row].children[cursor.col].style.color = 'red'
+        lrcData[cursor.row][cursor.col].time = timeToString(currentTime)
+        if (cursor.col < lrcData[cursor.row].length - 1) {
+          cursor.col++
+        } else if (cursor.row < lrcData.length - 1) {
+          cursor.row++
+          cursor.col = 0
+        }
+      } else if (e.key === 'ArrowLeft') {
+        if (!isVideoPlaying(soundVideo) || lrcData.length === 0) return
+        if (cursor.col > 0) {
+          cursor.col--
+        } else if (cursor.row > 0) {
+          cursor.row--
+          cursor.col = lrcData[cursor.row].length - 1
+        } else {
+          return
+        }
+        lrcArea.children[cursor.row].children[cursor.col].style.color = ''
+        soundVideo.currentTime = stringToTime(lrcData[cursor.row][cursor.col].time) - 1
+        delete lrcData[cursor.row][cursor.col].time
+      } else if (e.key === 'Enter') {
+        console.log(lrcData.map((line) => {
+          return line.map((block) => {
+            if (block.time) {
+              return `[${block.time}]${block.word}`
+            } else {
+              return block.word
+            }
+          }).join('')
+        }).join('\r\n'))
+      }
+    })
+  </script>
+</body>
+</html>
