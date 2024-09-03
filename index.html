@@ -65,11 +65,12 @@
             word = ''
           }
 
+          lineBlocks.push({ word: '' })
+
           return lineBlocks
         })
         console.log(lrcData)
-        
-        
+
         lrcArea.innerHTML = ''
         lrcData.forEach((line) => {
           const p = document.createElement('p')
@@ -77,7 +78,10 @@
             const span = document.createElement('span')
             span.style.display = 'inline-block'
             span.style.border = '1px solid black'
+            span.style.height = '40px'
+            span.style.boxSizing = 'border-box'
             span.style.padding = '8px'
+            span.style.verticalAlign = 'bottom'
             span.textContent = block.word
             p.appendChild(span)
           })
@@ -99,6 +103,7 @@
         if (!isVideoPlaying(soundVideo) || lrcData.length === 0) return
         const currentTime = soundVideo.currentTime
         lrcArea.children[cursor.row].children[cursor.col].style.color = 'red'
+        lrcArea.children[cursor.row].children[cursor.col].style.border = '1px solid red'
         lrcData[cursor.row][cursor.col].time = timeToString(currentTime)
         if (cursor.col < lrcData[cursor.row].length - 1) {
           cursor.col++
@@ -117,6 +122,7 @@
           return
         }
         lrcArea.children[cursor.row].children[cursor.col].style.color = ''
+        lrcArea.children[cursor.row].children[cursor.col].style.border = '1px solid black'
         soundVideo.currentTime = stringToTime(lrcData[cursor.row][cursor.col].time) - 1
         delete lrcData[cursor.row][cursor.col].time
       } else if (e.key === 'Enter') {
