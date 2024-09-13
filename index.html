@@ -4,11 +4,44 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lyrics</title>
+  <style>
+    :root {
+      --side-width: 400px;
+      --side-padding: 16px;
+    }
+
+    html, body {
+      font-size: 16px;
+      margin: 0;
+      padding: 0;
+    }
+
+    .side {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: var(--side-width);
+      height: 100%;
+      background-color: #f0f0f0;
+      padding: 16px;
+    }
+
+    .mt-4 {
+      margin-top: 16px;
+    }
+
+    #lrcArea {
+      margin-left: calc(var(--side-width) + var(--side-padding) * 2);
+      height: 1000px;
+    }
+  </style>
 </head>
 <body>
-  <input id="lrc" type="file" name="lrc">
-  <input id="sound" type="file" name="sound">
-  <video id="soundVideo" controls autoplay></video>
+  <div class="side">
+    <div><span>lrc: </span><input id="lrc" type="file" name="lrc"></div>
+    <div class="mt-4"><span>sound: </span><input id="sound" type="file" name="sound"></div>
+    <div class="mt-4"><video id="soundVideo" controls width="400"></video></div>
+  </div>
 
   <div id="lrcArea">
 
@@ -27,6 +60,9 @@
     let cursor = { row: 0, col: 0 }
 
     soundInput.addEventListener('change', (e) => {
+      if (soundVideo.src) {
+        URL.revokeObjectURL(soundVideo.src)
+      }
       const sound = e.target.files[0]
       soundVideo.src = URL.createObjectURL(sound)
     })
