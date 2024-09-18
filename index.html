@@ -50,6 +50,7 @@
 
   <script type="module">
     import { Lyrics } from './lyrics.js'
+    import { Cursor } from './cursor.js'
 
     const lrcInput = document.getElementById('lrc')
     const soundInput = document.getElementById('sound')
@@ -61,7 +62,33 @@
 
     let lrc = null
     let lrcData = []
-    let cursor = { row: 0, col: 0 }
+    let cursor = null
+    let cursorTimer = 0
+    let cursorBorder = false
+
+    const unFilledBlockBorderStyle = '1px dashed gray'
+    const filledBlockBorderStyle = '1px solid red'
+    const cursorBlockBorderStyle = '2px solid blue'
+
+    const getCursorElement = () => {
+      const blockEl = lrcArea.children[cursor.row].children[cursor.col]
+      if (lrc.data[cursor.row][cursor.col].ruby) {
+        return blockEl.children[0].children[cursor.rubyIndex]
+      } else {
+        return blockEl
+      }
+    }
+
+    const cursorCallback = () => {
+      if (lrcData.length === 0) return
+      cursorBorder = !cursorBorder
+      getCursorElement().style.outline = cursorBorder
+        ? cursorBlockBorderStyle
+        : cursor.getBlock().time
+          ? filledBlockBorderStyle
+          : unFilledBlockBorderStyle
+      cursorTimer = setTimeout(cursorCallback, 500)
+    }
 
     soundInput.addEventListener('change', (e) => {
       if (soundVideo.src) {
@@ -77,24 +104,50 @@
         const lrcText = decoder.decode(new Uint8Array(e.target.result))
         lrc = Lyrics.parse(lrcText)
         console.log(lrc)
+        cursor = new Cursor(lrc, true)
 
         lrcData = lrc.data
         lrcArea.innerHTML = ''
         lrcData.forEach((line) => {
           const p = document.createElement('p')
-          line.forEach((block) => {
-            const span = document.createElement('span')
-            span.style.display = 'inline-block'
-            span.style.border = '1px solid black'
-            span.style.height = '40px'
-            span.style.boxSizing = 'border-box'
-            span.style.padding = '8px'
-            span.style.verticalAlign = 'bottom'
-            span.textContent = block.word
-            p.appendChild(span)
+          p.style.margin = '20px 0'
+          p.style.fontSize = '24px'
+          line.forEach((block, index) => {
+            const blockElement = document.createElement('ruby')
+            // blockElement.style.display = 'inline-block'
+            // blockElement.style.height = '40px'
+            blockElement.style.boxSizing = 'border-box'
+            blockElement.style.padding = '24px 8px 8px 8px'
+            blockElement.style.margin = '2px'
+            blockElement.style.verticalAlign = 'bottom'
+            blockElement.textContent = block.word
+            p.appendChild(blockElement)
+
+            blockElement.style.outline = block.time ? filledBlockBorderStyle : unFilledBlockBorderStyle
+
+            if (block.ruby) {
+              const rubyElement = document.createElement('rt')
+              for (let i = 0; i < block.ruby.length; i++) {
+                const rubyCharElement = document.createElement('span')
+                rubyCharElement.style.display = 'inline-block'
+                rubyCharElement.style.outline = unFilledBlockBorderStyle
+                rubyCharElement.style.outline = block.ruby[i].time ? filledBlockBorderStyle : unFilledBlockBorderStyle
+                rubyCharElement.style.boxSizing = 'border-box'
+                rubyCharElement.style.padding = '1px'
+                rubyCharElement.style.margin = '0 1px'
+                rubyCharElement.style.position = 'relative'
+                rubyCharElement.style.bottom = '2px'
+                rubyCharElement.textContent = block.ruby[i].word
+                rubyElement.appendChild(rubyCharElement)
+              }
+              blockElement.appendChild(rubyElement)
+            }
           })
           lrcArea.appendChild(p)
         })
+
+        clearTimeout(cursorTimer)
+        cursorCallback()
       }
       reader.readAsArrayBuffer(e.target.files[0])
     })
@@ -102,32 +155,69 @@
     const isVideoPlaying = video => Boolean(video.currentTime > 0 && !video.paused && !video.ended && video.readyState > 2);
 
     document.addEventListener('keydown', (e) => {
+      console.log(e.key)
       if (e.key === 'ArrowRight') {
-        if (!isVideoPlaying(soundVideo) || lrcData.length === 0) return
-        const currentTime = soundVideo.currentTime
-        lrcArea.children[cursor.row].children[cursor.col].style.color = 'red'
-        lrcArea.children[cursor.row].children[cursor.col].style.border = '1px solid red'
-        lrcData[cursor.row][cursor.col].time = currentTime
-        if (cursor.col < lrcData[cursor.row].length - 1) {
-          cursor.col++
-        } else if (cursor.row < lrcData.length - 1) {
-          cursor.row++
-          cursor.col = 0
-        }
+        e.preventDefault()
+        const el = getCursorElement()
+        el.style.outline = cursor.getBlock().time
+          ? filledBlockBorderStyle
+          : unFilledBlockBorderStyle
+        cursor.right()
+        cursorBorder = false
+        clearTimeout(cursorTimer)
+        cursorCallback()
       } else if (e.key === 'ArrowLeft') {
-        if (!isVideoPlaying(soundVideo) || lrcData.length === 0) return
-        if (cursor.col > 0) {
-          cursor.col--
-        } else if (cursor.row > 0) {
-          cursor.row--
-          cursor.col = lrcData[cursor.row].length - 1
-        } else {
-          return
+        e.preventDefault()
+        const el = getCursorElement()
+        // if (!isVideoPlaying(soundVideo) || lrcData.length === 0) return
+        el.style.outline = cursor.getBlock().time
+          ? filledBlockBorderStyle
+          : unFilledBlockBorderStyle
+        if (cursor.left()) {
+          // el.style.color = ''
+          // el.style.outline = unFilledBlockBorderStyle
+          // soundVideo.currentTime = lrcData[cursor.row][cursor.col].time - 1
+          // delete lrcData[cursor.row][cursor.col].time
         }
-        lrcArea.children[cursor.row].children[cursor.col].style.color = ''
-        lrcArea.children[cursor.row].children[cursor.col].style.border = '1px solid black'
-        soundVideo.currentTime = lrcData[cursor.row][cursor.col].time - 1
-        delete lrcData[cursor.row][cursor.col].time
+        cursorBorder = false
+        clearTimeout(cursorTimer)
+        cursorCallback()
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        const el = getCursorElement()
+        el.style.outline = cursor.getBlock().time
+          ? filledBlockBorderStyle
+          : unFilledBlockBorderStyle
+        cursor.down()
+        cursorBorder = false
+        clearTimeout(cursorTimer)
+        cursorCallback()
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        const el = getCursorElement()
+        el.style.outline = cursor.getBlock().time
+          ? filledBlockBorderStyle
+          : unFilledBlockBorderStyle
+        cursor.up()
+        cursorBorder = false
+        clearTimeout(cursorTimer)
+        cursorCallback()
+      } else if (e.key === ' ') {
+        e.preventDefault()
+        if (!isVideoPlaying(soundVideo) || lrcData.length === 0) return
+        const el = getCursorElement()
+        // TODO: fix this
+        const currentTime = soundVideo.currentTime
+        el.style.color = 'red'
+        el.style.outline = filledBlockBorderStyle
+        cursor.getBlock().time = currentTime
+        el.style.outline = cursor.getBlock().time
+          ? filledBlockBorderStyle
+          : unFilledBlockBorderStyle
+        cursor.right()
+        cursorBorder = false
+        clearTimeout(cursorTimer)
+        cursorCallback()
       } else if (e.key === 'Enter') {
         console.log(lrc.toString())
       }
