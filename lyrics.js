@@ -1,12 +1,12 @@
 const timeToString = time => `${`0${Math.floor(time / 60)}`.slice(-2)}:${`0${Math.floor(time % 60)}`.slice(-2)}:${`0${Math.floor((time % 1) * 100)}`.slice(-2)}`
 
 const stringToTime = string => {
-  const [min, sec, ms] = string.split(':').map(Number)
+  const [min, sec, ms] = string.split(':')
   if (sec.includes('.')) {
     const [sec, ms] = sec.split('.').map(Number)
-    return min * 60 + sec + (ms || 0) / 100
+    return Number(min) * 60 + sec + (ms || 0) / 100
   }
-  return min * 60 + sec + (ms || 0) / 100
+  return Number(min) * 60 + Number(sec) + (Number(ms) || 0) / 100
 }
 
 export class Lyrics {
@@ -128,14 +128,31 @@ export class Lyrics {
       lrc.parseLine(line, index)
     })
 
+    const data = lrc.data
+    for (let i = 0; i < data.length; ++i) {
+      const line = data[i]
+      for (let j = 0; j < line.length; ++j) {
+        const block = line[j]
+        const ruby = lrc.ruby.find(r => r.target === block.word)
+        if (ruby) {
+          block.ruby = ruby.ruby
+        }
+      }
+    }
+
     return lrc
   }
 
   /**
    * @param {string} line
+   * @param {boolean=} emptySuffix
    * @returns {string | Array<{ word: string; time?: number> }> | { word: string; time?: number }}
    */
-  static parseText (line) {
+  static parseText (line, emptySuffix) {
+    if (line.trim() === '') {
+      return line
+    }
+
     const chars = line.split('')
     let word = ''
     let timeTag = ''
@@ -188,6 +205,10 @@ export class Lyrics {
           word = ' '
         }
       } else {
+        if (word.trim() === '' && word !== '') {
+          add(word)
+          word = ''
+        }
         if (code < 0x20 || code > 0x7e) {
           word += currentChar
           add(word)
@@ -204,7 +225,9 @@ export class Lyrics {
     }
 
     if (arr.length > 0) {
-      add('')
+      if (emptySuffix) {
+        add('')
+      }
       return arr
     }
 
@@ -216,7 +239,8 @@ export class Lyrics {
   }
 
   /**
-   * @param {string} line 
+   * @param {string} line
+   * @param {number} index
    */
   parseLine (line, index) {
     if (line.charCodeAt(0) === 0x40) {
@@ -276,16 +300,16 @@ export class Lyrics {
             const [target, ruby, start, end] = value.split(',')
             const rubyObject = { target }
             if (ruby) {
-              rubyObject.ruby = Lyrics.parseText(ruby)
+              rubyObject.ruby = Lyrics.parseText(ruby, false)
             }
             if (start) {
-              const obj = Lyrics.parseText(start)
+              const obj = Lyrics.parseText(start, false)
               if (obj.time) {
                 rubyObject.start = obj.time
               }
             }
             if (end) {
-              const obj = Lyrics.parseText(end)
+              const obj = Lyrics.parseText(end, false)
               if (obj.time) {
                 rubyObject.end = obj.time
               }
@@ -302,6 +326,27 @@ export class Lyrics {
       return
     }
 
-    this.lines[index] = Lyrics.parseText(line)
+    this.lines[index] = Lyrics.parseText(line, true)
+  }
+
+  toString () {
+    const strLines = []
+    for (let i = 0; i < this.lines.length; ++i) {
+      const line = this.lines[i]
+      if (Array.isArray(line)) {
+        strLines[i] = line.map(block => {
+          if (block.time) {
+            return `[${timeToString(block.time)}]${block.word}`
+          } else {
+            return block.word
+          }
+        }).join('')
+      } else if (typeof line === 'string') {
+        strLines[i] = line
+      } else {
+        throw new Error('Invalid line')
+      }
+    }
+    return strLines.join('\r\n')
   }
 }

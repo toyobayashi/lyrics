@@ -33,6 +33,7 @@
     #lrcArea {
       margin-left: calc(var(--side-width) + var(--side-padding) * 2);
       height: 1000px;
+      padding: 0 16px;
     }
   </style>
 </head>
@@ -47,7 +48,9 @@
 
   </div>
 
-  <script>
+  <script type="module">
+    import { Lyrics } from './lyrics.js'
+
     const lrcInput = document.getElementById('lrc')
     const soundInput = document.getElementById('sound')
     const soundVideo = document.getElementById('soundVideo')
@@ -56,6 +59,7 @@
     const decoder = new TextDecoder('shift-jis')
     const encoder = new TextEncoder('shift-jis')
 
+    let lrc = null
     let lrcData = []
     let cursor = { row: 0, col: 0 }
 
@@ -68,45 +72,13 @@
     })
 
     lrcInput.addEventListener('change', (e) => {
-      const lrc = e.target.files[0]
       const reader = new FileReader()
       reader.onload = (e) => {
         const lrcText = decoder.decode(new Uint8Array(e.target.result))
-        const lrcLines = lrcText.split(/\r?\n/).filter((data) => data !== '')
-        console.log(lrcLines)
-        lrcData = lrcLines.map(line => {
-          let word = ''
-          const lineBlocks = []
-          for (let i = 0; i < line.length; ++i) {
-            const code = line.charCodeAt(i)
-            if (code < 0x20 || code > 0x7e) {
-              lineBlocks.push({ word: word + line.slice(i, i + 1) })
-              word = ''
-            } else {
-              if (code === 32) {
-                if (word.trim() === '') {
-                  word += ' '
-                } else {
-                  lineBlocks.push({ word })
-                  word = ' '
-                }
-              } else {
-                word += line.slice(i, i + 1)
-              }
-            }
+        lrc = Lyrics.parse(lrcText)
+        console.log(lrc)
 
-          }
-          if (word.length > 0 && word.trim() !== '') {
-            lineBlocks.push({ word })
-            word = ''
-          }
-
-          lineBlocks.push({ word: '' })
-
-          return lineBlocks
-        })
-        console.log(lrcData)
-
+        lrcData = lrc.data
         lrcArea.innerHTML = ''
         lrcData.forEach((line) => {
           const p = document.createElement('p')
@@ -124,15 +96,10 @@
           lrcArea.appendChild(p)
         })
       }
-      reader.readAsArrayBuffer(lrc)
+      reader.readAsArrayBuffer(e.target.files[0])
     })
 
     const isVideoPlaying = video => Boolean(video.currentTime > 0 && !video.paused && !video.ended && video.readyState > 2);
-    const timeToString = time => `${`0${Math.floor(time / 60)}`.slice(-2)}:${`0${Math.floor(time % 60)}`.slice(-2)}:${`0${Math.floor((time % 1) * 100)}`.slice(-2)}`
-    const stringToTime = string => {
-      const [min, sec, ms] = string.split(':').map(Number)
-      return min * 60 + sec + ms / 100
-    }
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowRight') {
@@ -140,7 +107,7 @@
         const currentTime = soundVideo.currentTime
         lrcArea.children[cursor.row].children[cursor.col].style.color = 'red'
         lrcArea.children[cursor.row].children[cursor.col].style.border = '1px solid red'
-        lrcData[cursor.row][cursor.col].time = timeToString(currentTime)
+        lrcData[cursor.row][cursor.col].time = currentTime
         if (cursor.col < lrcData[cursor.row].length - 1) {
           cursor.col++
         } else if (cursor.row < lrcData.length - 1) {
@@ -159,18 +126,10 @@
         }
         lrcArea.children[cursor.row].children[cursor.col].style.color = ''
         lrcArea.children[cursor.row].children[cursor.col].style.border = '1px solid black'
-        soundVideo.currentTime = stringToTime(lrcData[cursor.row][cursor.col].time) - 1
+        soundVideo.currentTime = lrcData[cursor.row][cursor.col].time - 1
         delete lrcData[cursor.row][cursor.col].time
       } else if (e.key === 'Enter') {
-        console.log(lrcData.map((line) => {
-          return line.map((block) => {
-            if (block.time) {
-              return `[${block.time}]${block.word}`
-            } else {
-              return block.word
-            }
-          }).join('')
-        }).join('\r\n'))
+        console.log(lrc.toString())
       }
     })
   </script>
