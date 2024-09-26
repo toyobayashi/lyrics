@@ -7,12 +7,17 @@ export class Cursor {
     this.rubyIndex = 0
   }
 
-  getBlock () {
+  getBlocks () {
     const b = this.lrc.data[this.row][this.col]
-    if (this._enableRuby && b.ruby) {
-      return b.ruby[this.rubyIndex]
+    return {
+      block: b,
+      ruby: (this._enableRuby && b.ruby) ? b.ruby[this.rubyIndex] : null
     }
-    return b
+  }
+
+  getBlock () {
+    const { block, ruby } = this.getBlocks()
+    return ruby || block
   }
 
   up () {

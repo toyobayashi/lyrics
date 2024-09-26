@@ -39,7 +39,16 @@
 </head>
 <body>
   <div class="side">
-    <div><span>lrc: </span><input id="lrc" type="file" name="lrc"></div>
+    <div>
+      <span>encoding: </span>
+      <select id="encoding">
+        <option value="shift-jis">shift-jis</option>
+        <option value="utf-8">utf-8</option>
+      </select>
+      <span>ruby: </span>
+      <input id="enableRuby" type="checkbox" />
+    </div>
+    <div class="mt-4"><span>lrc: </span><input id="lrc" type="file" name="lrc"></div>
     <div class="mt-4"><span>sound: </span><input id="sound" type="file" name="sound"></div>
     <div class="mt-4"><video id="soundVideo" controls width="400"></video></div>
   </div>
@@ -52,13 +61,34 @@
     import { Lyrics } from './lyrics.js'
     import { Cursor } from './cursor.js'
 
+    const unFilledBlockTextColor = 'black'
+    const filledBlockTextColor = 'red'
+    const unFilledBlockBorderStyle = '1px dashed gray'
+    const filledBlockBorderStyle = '1px solid red'
+    const cursorBlockBorderStyle = '2px solid blue'
+    
     const lrcInput = document.getElementById('lrc')
     const soundInput = document.getElementById('sound')
     const soundVideo = document.getElementById('soundVideo')
+    /** @type {HTMLSelectElement} */
+    const encoding = document.getElementById('encoding')
+    /** @type {HTMLInputElement} */
+    const enableRubyInput = document.getElementById('enableRuby')
     const lrcArea = document.getElementById('lrcArea')
-
-    const decoder = new TextDecoder('shift-jis')
-    const encoder = new TextEncoder('shift-jis')
+    
+    let enableRuby = Boolean(enableRubyInput.checked)
+    enableRubyInput.addEventListener('change', (e) => {
+      const value = e.target.checked
+      if (cursor) {
+        clearCursorStyle()
+        enableRuby = value
+        cursor.rubyIndex = 0
+        cursor._enableRuby = value
+        restartCursorTimer()
+      } else {
+        enableRuby = value
+      }
+    })
 
     let lrc = null
     let lrcData = []
@@ -66,17 +96,73 @@
     let cursorTimer = 0
     let cursorBorder = false
 
-    const unFilledBlockBorderStyle = '1px dashed gray'
-    const filledBlockBorderStyle = '1px solid red'
-    const cursorBlockBorderStyle = '2px solid blue'
+    const positionMap = new WeakMap()
+
+    const clearCursorStyle = () => {
+      const el = getCursorElement()
+      const block = cursor.getBlock()
+      el.style.outline = block.time != null
+        ? filledBlockBorderStyle
+        : unFilledBlockBorderStyle
+      el.style.color = block.time != null
+        ? filledBlockTextColor
+        : unFilledBlockTextColor
+    }
+
+    const restartCursorTimer = () => {
+      cursorBorder = false
+      clearTimeout(cursorTimer)
+      cursorCallback()
+    }
+
+    lrcArea.addEventListener('click', (e) => {
+      const target = e.target
+      if (target.tagName === 'RUBY') {
+        const pos = positionMap.get(target)
+        if (cursor && pos) {
+          clearCursorStyle()
+          cursor.row = pos.row
+          cursor.col = pos.col
+          cursor.rubyIndex = 0
+          restartCursorTimer()
+        }
+      } else if (target.tagName === 'RT') {
+        const pos = positionMap.get(target.parentElement)
+        if (cursor && pos) {
+          clearCursorStyle()
+          cursor.row = pos.row
+          cursor.col = pos.col
+          cursor.rubyIndex = 0
+          restartCursorTimer()
+        }
+      } else if (target.tagName === 'SPAN') {
+        const pos = positionMap.get(target)
+        if (cursor && pos) {
+          clearCursorStyle()
+          cursor.row = pos.row
+          cursor.col = pos.col
+          cursor.rubyIndex = enableRuby ? pos.rubyIndex : 0
+          restartCursorTimer()
+        }
+      }
+    }, true)
+
+    const getCursorElements = () => {
+      const { block, ruby } = cursor.getBlocks()
+      const blockEl = lrcArea.children[cursor.row].children[cursor.col]
+      const rubyEl = lrc.data[cursor.row][cursor.col].ruby ? blockEl.children[0].children[cursor.rubyIndex] : null
+      return {
+        block,
+        blockEl,
+        ruby,
+        rubyEl,
+        firstRuby: Boolean(ruby && rubyEl && (cursor.rubyIndex === 0))
+      }
+    }
 
     const getCursorElement = () => {
-      const blockEl = lrcArea.children[cursor.row].children[cursor.col]
-      if (lrc.data[cursor.row][cursor.col].ruby) {
-        return blockEl.children[0].children[cursor.rubyIndex]
-      } else {
-        return blockEl
-      }
+      const { blockEl, rubyEl } = getCursorElements()
+      return enableRuby ? (rubyEl || blockEl) : blockEl
     }
 
     const cursorCallback = () => {
@@ -84,7 +170,7 @@
       cursorBorder = !cursorBorder
       getCursorElement().style.outline = cursorBorder
         ? cursorBlockBorderStyle
-        : cursor.getBlock().time
+        : cursor.getBlock().time != null
           ? filledBlockBorderStyle
           : unFilledBlockBorderStyle
       cursorTimer = setTimeout(cursorCallback, 500)
@@ -101,18 +187,18 @@
     lrcInput.addEventListener('change', (e) => {
       const reader = new FileReader()
       reader.onload = (e) => {
-        const lrcText = decoder.decode(new Uint8Array(e.target.result))
+        const lrcText = new TextDecoder(encoding.value).decode(new Uint8Array(e.target.result))
         lrc = Lyrics.parse(lrcText)
         console.log(lrc)
-        cursor = new Cursor(lrc, true)
+        cursor = new Cursor(lrc, enableRuby)
 
         lrcData = lrc.data
         lrcArea.innerHTML = ''
-        lrcData.forEach((line) => {
+        lrcData.forEach((line, row) => {
           const p = document.createElement('p')
           p.style.margin = '20px 0'
           p.style.fontSize = '24px'
-          line.forEach((block, index) => {
+          line.forEach((block, col) => {
             const blockElement = document.createElement('ruby')
             // blockElement.style.display = 'inline-block'
             // blockElement.style.height = '40px'
@@ -121,9 +207,12 @@
             blockElement.style.margin = '2px'
             blockElement.style.verticalAlign = 'bottom'
             blockElement.textContent = block.word
+
+            positionMap.set(blockElement, { row: row, col: col })
             p.appendChild(blockElement)
 
-            blockElement.style.outline = block.time ? filledBlockBorderStyle : unFilledBlockBorderStyle
+            blockElement.style.outline = block.time != null ? filledBlockBorderStyle : unFilledBlockBorderStyle
+            blockElement.style.color = block.time != null ? filledBlockTextColor : unFilledBlockTextColor
 
             if (block.ruby) {
               const rubyElement = document.createElement('rt')
@@ -131,13 +220,15 @@
                 const rubyCharElement = document.createElement('span')
                 rubyCharElement.style.display = 'inline-block'
                 rubyCharElement.style.outline = unFilledBlockBorderStyle
-                rubyCharElement.style.outline = block.ruby[i].time ? filledBlockBorderStyle : unFilledBlockBorderStyle
+                rubyCharElement.style.outline = block.ruby[i].time != null ? filledBlockBorderStyle : unFilledBlockBorderStyle
+                rubyCharElement.style.color = block.ruby[i].time != null ? filledBlockTextColor : unFilledBlockTextColor
                 rubyCharElement.style.boxSizing = 'border-box'
                 rubyCharElement.style.padding = '1px'
                 rubyCharElement.style.margin = '0 1px'
                 rubyCharElement.style.position = 'relative'
                 rubyCharElement.style.bottom = '2px'
                 rubyCharElement.textContent = block.ruby[i].word
+                positionMap.set(rubyCharElement, { row: row, col: col, rubyIndex: i })
                 rubyElement.appendChild(rubyCharElement)
               }
               blockElement.appendChild(rubyElement)
@@ -158,66 +249,58 @@
       console.log(e.key)
       if (e.key === 'ArrowRight') {
         e.preventDefault()
-        const el = getCursorElement()
-        el.style.outline = cursor.getBlock().time
-          ? filledBlockBorderStyle
-          : unFilledBlockBorderStyle
+        clearCursorStyle()
         cursor.right()
-        cursorBorder = false
-        clearTimeout(cursorTimer)
-        cursorCallback()
+        restartCursorTimer()
       } else if (e.key === 'ArrowLeft') {
         e.preventDefault()
-        const el = getCursorElement()
         // if (!isVideoPlaying(soundVideo) || lrcData.length === 0) return
-        el.style.outline = cursor.getBlock().time
-          ? filledBlockBorderStyle
-          : unFilledBlockBorderStyle
+        clearCursorStyle()
         if (cursor.left()) {
           // el.style.color = ''
           // el.style.outline = unFilledBlockBorderStyle
           // soundVideo.currentTime = lrcData[cursor.row][cursor.col].time - 1
           // delete lrcData[cursor.row][cursor.col].time
         }
-        cursorBorder = false
-        clearTimeout(cursorTimer)
-        cursorCallback()
+        restartCursorTimer()
       } else if (e.key === 'ArrowDown') {
         e.preventDefault()
-        const el = getCursorElement()
-        el.style.outline = cursor.getBlock().time
-          ? filledBlockBorderStyle
-          : unFilledBlockBorderStyle
+        clearCursorStyle()
         cursor.down()
-        cursorBorder = false
-        clearTimeout(cursorTimer)
-        cursorCallback()
+        restartCursorTimer()
       } else if (e.key === 'ArrowUp') {
         e.preventDefault()
-        const el = getCursorElement()
-        el.style.outline = cursor.getBlock().time
-          ? filledBlockBorderStyle
-          : unFilledBlockBorderStyle
+        clearCursorStyle()
         cursor.up()
-        cursorBorder = false
-        clearTimeout(cursorTimer)
-        cursorCallback()
+        restartCursorTimer()
       } else if (e.key === ' ') {
         e.preventDefault()
         if (!isVideoPlaying(soundVideo) || lrcData.length === 0) return
-        const el = getCursorElement()
-        // TODO: fix this
-        const currentTime = soundVideo.currentTime
-        el.style.color = 'red'
-        el.style.outline = filledBlockBorderStyle
-        cursor.getBlock().time = currentTime
-        el.style.outline = cursor.getBlock().time
-          ? filledBlockBorderStyle
-          : unFilledBlockBorderStyle
+
+        if (enableRuby) {
+          const { block, ruby, blockEl, rubyEl, firstRuby } = getCursorElements()
+  
+          const currentTime = soundVideo.currentTime
+          if (firstRuby || !ruby || !rubyEl) {
+            blockEl.style.color = filledBlockTextColor
+            blockEl.style.outline = filledBlockBorderStyle
+            block.time = currentTime
+          }
+          if (rubyEl) {
+            rubyEl.style.color = filledBlockTextColor
+            rubyEl.style.outline = filledBlockBorderStyle
+            ruby.time = currentTime - block.time
+          }
+        } else {
+          const { block, blockEl } = getCursorElements()
+          const currentTime = soundVideo.currentTime
+          blockEl.style.color = filledBlockTextColor
+          blockEl.style.outline = filledBlockBorderStyle
+          block.time = currentTime
+        }
+
         cursor.right()
-        cursorBorder = false
-        clearTimeout(cursorTimer)
-        cursorCallback()
+        restartCursorTimer()
       } else if (e.key === 'Enter') {
         console.log(lrc.toString())
       }

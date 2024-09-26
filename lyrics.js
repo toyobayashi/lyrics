@@ -9,6 +9,9 @@ const stringToTime = string => {
   return Number(min) * 60 + Number(sec) + (Number(ms) || 0) / 100
 }
 
+const clone = typeof structuredClone === 'function' ? structuredClone : (obj => JSON.parse(JSON.stringify(obj)))
+const deepEqual = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+
 export class Lyrics {
   constructor () {
     /**
@@ -135,7 +138,7 @@ export class Lyrics {
         const block = line[j]
         const ruby = lrc.ruby.find(r => r.target === block.word)
         if (ruby) {
-          block.ruby = ruby.ruby
+          block.ruby = clone(ruby.ruby)
         }
       }
     }
@@ -304,13 +307,13 @@ export class Lyrics {
             }
             if (start) {
               const obj = Lyrics.parseText(start, false)
-              if (obj.time) {
+              if (obj.time != null) {
                 rubyObject.start = obj.time
               }
             }
             if (end) {
               const obj = Lyrics.parseText(end, false)
-              if (obj.time) {
+              if (obj.time != null) {
                 rubyObject.end = obj.time
               }
             }
@@ -329,24 +332,85 @@ export class Lyrics {
     this.lines[index] = Lyrics.parseText(line, true)
   }
 
+  saveRuby () {
+    const data = this.data
+    const rubyList = []
+    for (let i = 0; i < data.length; ++i) {
+      const line = data[i]
+      for (let j = 0; j < line.length; ++j) {
+        const block = line[j]
+        if (block.ruby) {
+          const found = rubyList.filter(r => r.target === block.word)
+          if (found.some(r => deepEqual(r.ruby, block.ruby))) {
+            continue
+          } else {
+            if (found.length > 0) found[found.length - 1].end = block.time
+            if (found.length > 0) {
+              rubyList.push({ target: block.word, ruby: clone(block.ruby), start: block.time })
+            } else {
+              rubyList.push({ target: block.word, ruby: clone(block.ruby) })
+            }
+          }
+        }
+      }
+    }
+    this.ruby = rubyList
+  }
+
   toString () {
     const strLines = []
+    const rubyLines = []
     for (let i = 0; i < this.lines.length; ++i) {
       const line = this.lines[i]
       if (Array.isArray(line)) {
         strLines[i] = line.map(block => {
-          if (block.time) {
+          if (block.time != null) {
             return `[${timeToString(block.time)}]${block.word}`
           } else {
             return block.word
           }
         }).join('')
       } else if (typeof line === 'string') {
-        strLines[i] = line
+        if (line.startsWith('@Ruby')) {
+          rubyLines.push(i)
+        } else {
+          strLines[i] = line
+        }
       } else {
         throw new Error('Invalid line')
       }
     }
+    this.saveRuby()
+    this.ruby.forEach((r, n) => {
+      const arr = [
+        r.target,
+        r.ruby ? r.ruby.map(block => {
+          if (block.time != null) {
+            return `[${timeToString(block.time)}]${block.word}`
+          } else {
+            return block.word
+          }
+        }).join('') : undefined,
+        r.start != null ? timeToString(r.start) : undefined,
+        r.end != null ? timeToString(r.end) : undefined
+      ]
+      let i = arr.length - 1
+      for (; i >= 0; --i) {
+        if (arr[i] === undefined) {
+          arr.length = i
+        } else {
+          break
+        }
+      }
+      const rubyValue = arr.join(',')
+      const line = `@Ruby${n + 1}=${rubyValue}`
+      const lineNumber = rubyLines.shift()
+      if (lineNumber) {
+        strLines[lineNumber] = line
+      } else {
+        strLines.push(line)
+      }
+    })
     return strLines.join('\r\n')
   }
 }
