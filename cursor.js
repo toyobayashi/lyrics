@@ -7,7 +7,11 @@ export class Cursor {
     this.rubyIndex = 0
   }
 
-  setEnableRuby (enableRuby) {
+  get enableRuby () {
+    return this._enableRuby
+  }
+
+  set enableRuby (enableRuby) {
     this._enableRuby = enableRuby
     if (!enableRuby) {
       this.rubyIndex = 0

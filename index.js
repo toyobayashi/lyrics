@@ -107,10 +107,61 @@ class SideBar extends Component {
  * @extends {Component<HTMLDivElement>}
  */
 class LrcArea extends Component {
-  constructor (container) {
+  constructor (container, globalSettings) {
     super(document.createElement('div'))
     this.domNode.classList.add('lrc-area')
     container.appendChild(this.domNode)
+    this.positionMap = new WeakMap()
+    this._addEventListener(this.domNode, 'click', (e) => {
+      const target = e.target
+      if (target.tagName === 'RUBY') {
+        const pos = this.positionMap.get(target)
+        if (this.cursor && pos) {
+          this.clearCursorStyle()
+          this.cursor.row = pos.row
+          this.cursor.col = pos.col
+          this.cursor.rubyIndex = 0
+          this.restartCursorTimer()
+        }
+      } else if (target.tagName === 'RT') {
+        const pos = this.positionMap.get(target.parentElement)
+        if (this.cursor && pos) {
+          this.clearCursorStyle()
+          this.cursor.row = pos.row
+          this.cursor.col = pos.col
+          this.cursor.rubyIndex = 0
+          this.restartCursorTimer()
+        }
+      } else if (target.tagName === 'SPAN') {
+        const pos = this.positionMap.get(target)
+        if (this.cursor && pos) {
+          this.clearCursorStyle()
+          this.cursor.row = pos.row
+          this.cursor.col = pos.col
+          this.cursor.rubyIndex = this.enableRuby ? pos.rubyIndex : 0
+          this.restartCursorTimer()
+        }
+      }
+    })
+
+    this.globalSettings = globalSettings
+    this.cursor = null
+    this._cursorTimer = 0
+    this._cursorCallback = () => {
+      if (!this.cursor) return
+      if (this.cursor.lrc.data.length === 0) return
+      const el = this.getCursorElement()
+      if (el.style.outline !== this.globalSettings.cursorBlockBorderStyle) {
+        el.style.outline = this.globalSettings.cursorBlockBorderStyle
+      } else {
+        if (this.cursor.getBlock().time != null) {
+          el.style.outline = this.globalSettings.filledBlockBorderStyle
+        } else {
+          el.style.outline = this.globalSettings.unFilledBlockBorderStyle    
+        }
+      }
+      this._cursorTimer = setTimeout(this._cursorCallback, 500)
+    }
   }
 
   clear () {
@@ -119,6 +170,73 @@ class LrcArea extends Component {
 
   get (row, col) {
     return this.domNode.children[row].children[col]
+  }
+
+  setCursor (cursor) {
+    this.cursor = cursor
+  }
+
+  clearCursorStyle () {
+    const el = this.getCursorElement()
+    const block = this.cursor.getBlock()
+    el.style.outline = block.time != null
+      ? this.globalSettings.filledBlockBorderStyle
+      : this.globalSettings.unFilledBlockBorderStyle
+    el.style.color = block.time != null
+      ? this.globalSettings.filledBlockTextColor
+      : this.globalSettings.unFilledBlockTextColor
+  }
+
+  restartCursorTimer () {
+    this.clearCursorStyle()
+    clearTimeout(this._cursorTimer)
+    this._cursorCallback()
+  }
+
+  getCursorElements () {
+    const { block, ruby } = this.cursor.getBlocks()
+    const blockEl = this.get(this.cursor.row, this.cursor.col)
+    const rubyEl = this.cursor.lrc.data[this.cursor.row][this.cursor.col].ruby ? blockEl.children[0].children[this.cursor.rubyIndex] : null
+    return {
+      block,
+      blockEl,
+      ruby,
+      rubyEl,
+      firstRuby: Boolean(ruby && rubyEl && (this.cursor.rubyIndex === 0))
+    }
+  }
+  
+  getCursorElement () {
+    const { blockEl, rubyEl } = this.getCursorElements()
+    return this.cursor.enableRuby ? (rubyEl || blockEl) : blockEl
+  }
+
+  up () {
+    this.clearCursorStyle()
+    const ret = this.cursor.up()
+    this.restartCursorTimer()
+    return ret
+  }
+
+  down () {
+    this.clearCursorStyle()
+    const ret = this.cursor.down()
+    this.restartCursorTimer()
+    return ret
+  }
+
+  left () {
+    this.clearCursorStyle()
+    const ret = this.cursor.left()
+    this.restartCursorTimer()
+    return ret
+  }
+
+  right () {
+    this.clearCursorStyle()
+    const ret = this.cursor.right()
+    this.restartCursorTimer()
+    return ret
   }
 }
 
@@ -133,7 +251,7 @@ class App extends Component {
       filledBlockTextColor: 'red',
       unFilledBlockBorderStyle: '1px dashed gray',
       filledBlockBorderStyle: '1px solid red',
-      cursorBlockBorderStyle: '2px solid blue'
+      cursorBlockBorderStyle: 'blue solid 2px'
     }
 
     this.positionMap = new WeakMap()
@@ -143,13 +261,17 @@ class App extends Component {
     this.cursorBorder = false
 
     this.sideBar = this._register(new SideBar(this.domNode))
-    this.lrcArea = this._register(new LrcArea(this.domNode))
+    this.lrcArea = this._register(new LrcArea(this.domNode, this.globalSettings))
     container.appendChild(this.domNode)
 
     this._register(this.sideBar.onDidLrcInputChange(this.onDidLrcInputChange, this))
     this._register(this.sideBar.onDidEnableRubyChange(this.onDidEnableRubyChange, this))
-    this._addEventListener(this.lrcArea.domNode, 'click', this.onDidLrcAreaClick.bind(this), false)
     this._addEventListener(document, 'keydown', this.onDidKeydown.bind(this), false)
+  }
+
+  dispose () {
+    super.dispose()
+    this.lrcArea = null
   }
 
   get lrcData () {
@@ -161,46 +283,11 @@ class App extends Component {
   }
 
   /**
-   * @param {Event} e 
-   */
-  onDidLrcAreaClick (e) {
-    const target = e.target
-    if (target.tagName === 'RUBY') {
-      const pos = this.positionMap.get(target)
-      if (this.cursor && pos) {
-        this.clearCursorStyle()
-        this.cursor.row = pos.row
-        this.cursor.col = pos.col
-        this.cursor.rubyIndex = 0
-        this.restartCursorTimer()
-      }
-    } else if (target.tagName === 'RT') {
-      const pos = this.positionMap.get(target.parentElement)
-      if (this.cursor && pos) {
-        this.clearCursorStyle()
-        this.cursor.row = pos.row
-        this.cursor.col = pos.col
-        this.cursor.rubyIndex = 0
-        this.restartCursorTimer()
-      }
-    } else if (target.tagName === 'SPAN') {
-      const pos = this.positionMap.get(target)
-      if (this.cursor && pos) {
-        this.clearCursorStyle()
-        this.cursor.row = pos.row
-        this.cursor.col = pos.col
-        this.cursor.rubyIndex = this.enableRuby ? pos.rubyIndex : 0
-        this.restartCursorTimer()
-      }
-    }
-  }
-
-  /**
    * @param {boolean} value
    */
   onDidEnableRubyChange (value) {
     if (this.cursor) {
-      const { block, blockEl, ruby, rubyEl } = this.getCursorElements()
+      const { block, blockEl, ruby, rubyEl } = this.lrcArea.getCursorElements()
       if (value) {
         blockEl.style.outline = block.time != null ? this.globalSettings.filledBlockBorderStyle : this.globalSettings.unFilledBlockBorderStyle
         blockEl.style.color = block.time != null ? this.globalSettings.filledBlockTextColor : this.globalSettings.unFilledBlockTextColor
@@ -210,10 +297,10 @@ class App extends Component {
           rubyEl.style.color = ruby.time != null ? this.globalSettings.filledBlockTextColor : this.globalSettings.unFilledBlockTextColor
         }
       }
-      clearTimeout(this.cursorTimer)
+      clearTimeout(this.lrcArea._cursorTimer)
       this.cursor.rubyIndex = 0
-      this.cursor.setEnableRuby(value)
-      this.restartCursorTimer()
+      this.cursor.enableRuby = value
+      this.lrcArea.restartCursorTimer()
     }
   }
 
@@ -227,6 +314,7 @@ class App extends Component {
       this.lrc = Lyrics.parse(lrcText)
       console.log(this.lrc)
       this.cursor = new Cursor(this.lrc, this.enableRuby)
+      this.lrcArea.setCursor(this.cursor)
 
       this.lrcArea.clear()
       this.lrcData.forEach((line, row) => {
@@ -272,56 +360,9 @@ class App extends Component {
         this.lrcArea.domNode.appendChild(p)
       })
 
-      clearTimeout(this.cursorTimer)
-      this.cursorCallback()
+      this.lrcArea.restartCursorTimer()
     }
     reader.readAsArrayBuffer(e.target.files[0])
-  }
-
-  clearCursorStyle () {
-    const el = this.getCursorElement()
-    const block = this.cursor.getBlock()
-    el.style.outline = block.time != null
-      ? this.globalSettings.filledBlockBorderStyle
-      : this.globalSettings.unFilledBlockBorderStyle
-    el.style.color = block.time != null
-      ? this.globalSettings.filledBlockTextColor
-      : this.globalSettings.unFilledBlockTextColor
-  }
-  
-  restartCursorTimer () {
-    this.cursorBorder = false
-    clearTimeout(this.cursorTimer)
-    this.cursorCallback()
-  }
-
-  getCursorElements () {
-    const { block, ruby } = this.cursor.getBlocks()
-    const blockEl = this.lrcArea.get(this.cursor.row, this.cursor.col)
-    const rubyEl = this.lrc.data[this.cursor.row][this.cursor.col].ruby ? blockEl.children[0].children[this.cursor.rubyIndex] : null
-    return {
-      block,
-      blockEl,
-      ruby,
-      rubyEl,
-      firstRuby: Boolean(ruby && rubyEl && (this.cursor.rubyIndex === 0))
-    }
-  }
-  
-  getCursorElement () {
-    const { blockEl, rubyEl } = this.getCursorElements()
-    return this.enableRuby ? (rubyEl || blockEl) : blockEl
-  }
-  
-  cursorCallback () {
-    if (this.lrcData.length === 0) return
-    this.cursorBorder = !this.cursorBorder
-    this.getCursorElement().style.outline = this.cursorBorder
-      ? this.globalSettings.cursorBlockBorderStyle
-      : this.cursor.getBlock().time != null
-        ? this.globalSettings.filledBlockBorderStyle
-        : this.globalSettings.unFilledBlockBorderStyle
-    this.cursorTimer = setTimeout(this.cursorCallback.bind(this), 500)
   }
 
   /**
@@ -331,36 +372,28 @@ class App extends Component {
     console.log(e.key)
     if (e.key === 'ArrowRight') {
       e.preventDefault()
-      this.clearCursorStyle()
-      this.cursor.right()
-      this.restartCursorTimer()
+      this.lrcArea.right()
     } else if (e.key === 'ArrowLeft') {
       e.preventDefault()
       // if (!this.sideBar.isPlaying() || lrcData.length === 0) return
-      this.clearCursorStyle()
-      if (this.cursor.left()) {
+      if (this.lrcArea.left()) {
         // el.style.color = ''
         // el.style.outline = unFilledBlockBorderStyle
         // soundVideo.currentTime = lrcData[cursor.row][cursor.col].time - 1
         // delete lrcData[cursor.row][cursor.col].time
       }
-      this.restartCursorTimer()
     } else if (e.key === 'ArrowDown') {
       e.preventDefault()
-      this.clearCursorStyle()
-      this.cursor.down()
-      this.restartCursorTimer()
+      this.lrcArea.down()
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
-      this.clearCursorStyle()
-      this.cursor.up()
-      this.restartCursorTimer()
+      this.lrcArea.up()
     } else if (e.key === ' ') {
       e.preventDefault()
       if (!this.sideBar.isPlaying() || this.lrcData.length === 0) return
 
       if (this.enableRuby) {
-        const { block, ruby, blockEl, rubyEl, firstRuby } = this.getCursorElements()
+        const { block, ruby, blockEl, rubyEl, firstRuby } = this.lrcArea.getCursorElements()
 
         const currentTime = this.sideBar.soundVideo.currentTime
         if (firstRuby || !ruby || !rubyEl) {
@@ -374,7 +407,7 @@ class App extends Component {
           ruby.time = currentTime - block.time
         }
       } else {
-        const { block, blockEl } = this.getCursorElements()
+        const { block, blockEl } = this.lrcArea.getCursorElements()
         const currentTime = this.sideBar.soundVideo.currentTime
         blockEl.style.color = this.globalSettings.filledBlockTextColor
         blockEl.style.outline = this.globalSettings.filledBlockBorderStyle
@@ -382,7 +415,7 @@ class App extends Component {
       }
 
       this.cursor.right()
-      this.restartCursorTimer()
+      this.lrcArea.restartCursorTimer()
     } else if (e.key === 'Enter') {
       console.log(this.lrc.toString())
     }
