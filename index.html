@@ -30,7 +30,7 @@
       margin-top: 16px;
     }
 
-    #lrcArea {
+    .lrc-area {
       margin-left: calc(var(--side-width) + var(--side-padding) * 2);
       height: 1000px;
       padding: 0 16px;
@@ -38,25 +38,6 @@
   </style>
 </head>
 <body>
-  <div class="side">
-    <div>
-      <span>encoding: </span>
-      <select id="encoding">
-        <option value="shift-jis">shift-jis</option>
-        <option value="utf-8">utf-8</option>
-      </select>
-      <span>ruby: </span>
-      <input id="enableRuby" type="checkbox" />
-    </div>
-    <div class="mt-4"><span>lrc: </span><input id="lrc" type="file" name="lrc"></div>
-    <div class="mt-4"><span>sound: </span><input id="sound" type="file" name="sound"></div>
-    <div class="mt-4"><video id="soundVideo" controls width="400"></video></div>
-  </div>
-
-  <div id="lrcArea">
-
-  </div>
-
   <script type="module" src="./index.js"></script>
 </body>
 </html>
