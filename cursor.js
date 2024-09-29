@@ -1,3 +1,5 @@
+import { Emitter } from './util.js'
+
 export class Cursor {
   constructor (lrc, enableRuby) {
     this.lrc = lrc
@@ -5,6 +7,28 @@ export class Cursor {
     this.row = 0
     this.col = 0
     this.rubyIndex = 0
+
+    this._onDidChange = new Emitter()
+    this.onDidChange = this._onDidChange.event
+
+    this._onDidEnableRubyChange = new Emitter()
+    this.onDidEnableRubyChange = this._onDidEnableRubyChange.event
+  }
+
+  reset () {
+    const changed = this.row !== 0 || this.col !== 0 || this.rubyIndex !== 0
+    this.row = 0
+    this.col = 0
+    this.rubyIndex = 0
+    if (changed) this._onDidChange.fire(this)
+  }
+
+  set (row, col, rubyIndex) {
+    const changed = this.row !== row || this.col !== col || this.rubyIndex !== rubyIndex
+    this.row = row
+    this.col = col
+    this.rubyIndex = rubyIndex
+    if (changed) this._onDidChange.fire(this)
   }
 
   get enableRuby () {
@@ -12,9 +36,12 @@ export class Cursor {
   }
 
   set enableRuby (enableRuby) {
+    const changed = this._enableRuby !== enableRuby
     this._enableRuby = enableRuby
-    if (!enableRuby) {
+    if (changed) this._onDidEnableRubyChange.fire(enableRuby)
+    if (!enableRuby && this.rubyIndex !== 0) {
       this.rubyIndex = 0
+      this._onDidChange.fire(this)
     }
   }
 
@@ -35,6 +62,7 @@ export class Cursor {
     if (this.row > 0) {
       this.row--
       this.col = Math.min(this.col, this.lrc.data[this.row].length - 1)
+      this._onDidChange.fire(this)
       return true
     }
     return false
@@ -45,6 +73,7 @@ export class Cursor {
     if (this.row < data.length - 1) {
       this.row++
       this.col = Math.min(this.col, data[this.row].length - 1)
+      this._onDidChange.fire(this)
       return true
     }
     return false
@@ -63,11 +92,13 @@ export class Cursor {
             this.rubyIndex = currentBlock.ruby.length - 1
           }
         }
+        this._onDidChange.fire(this)
         return true
       } else if (this.row > 0) {
         this.row--
         this.col = data[this.row].length - 1
         this.rubyIndex = 0
+        this._onDidChange.fire(this)
         return true
       }
       return false
@@ -76,6 +107,7 @@ export class Cursor {
     if (this._enableRuby && block.ruby) {
       if (this.rubyIndex > 0) {
         this.rubyIndex--
+        this._onDidChange.fire(this)
         return true
       } else {
         return backCol()
@@ -93,11 +125,13 @@ export class Cursor {
       if (this.col < data[this.row].length - 1) {
         this.col++
         this.rubyIndex = 0
+        this._onDidChange.fire(this)
         return true
       } else if (this.row < data.length - 1) {
         this.row++
         this.col = 0
         this.rubyIndex = 0
+        this._onDidChange.fire(this)
         return true
       }
       return false
@@ -106,6 +140,7 @@ export class Cursor {
     if (this._enableRuby && block.ruby) {
       if (this.rubyIndex < block.ruby.length - 1) {
         this.rubyIndex++
+        this._onDidChange.fire(this)
         return true
       } else {
         return nextCol()
