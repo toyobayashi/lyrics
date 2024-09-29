@@ -2,7 +2,7 @@ import { Emitter } from './util.js'
 
 export class Cursor {
   constructor (lrc, enableRuby) {
-    this.lrc = lrc
+    this._lrc = lrc
     this._enableRuby = enableRuby
     this.row = 0
     this.col = 0
@@ -11,8 +11,20 @@ export class Cursor {
     this._onDidChange = new Emitter()
     this.onDidChange = this._onDidChange.event
 
+    this._onDidLrcChange = new Emitter()
+    this.onDidLrcChange = this._onDidLrcChange.event
+
     this._onDidEnableRubyChange = new Emitter()
     this.onDidEnableRubyChange = this._onDidEnableRubyChange.event
+  }
+
+  get lrc () {
+    return this._lrc
+  }
+
+  set lrc (lrc) {
+    this._lrc = lrc
+    this._onDidLrcChange.fire(lrc)
   }
 
   reset () {
@@ -45,11 +57,11 @@ export class Cursor {
     }
   }
 
-  getBlocks () {
+  getBlocks (forceRuby = false) {
     const b = this.lrc.data[this.row][this.col]
     return {
       block: b,
-      ruby: (this._enableRuby && b.ruby) ? b.ruby[this.rubyIndex] : null
+      ruby: (forceRuby || (this._enableRuby && b.ruby)) ? b.ruby[this.rubyIndex] : null
     }
   }
 

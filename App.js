@@ -23,6 +23,7 @@ export class App extends Component {
 
     this.sideBar = this._register(new SideBar(this.domNode))
     this.cursor = new Cursor(null, this.sideBar.enableRubyInput.checked)
+    this.sideBar.blockForm.setCursor(this.cursor)
     this._register(this.sideBar.onDidEnableRubyChange((value) => {
       this.cursor.enableRuby = value
     }))
@@ -66,6 +67,7 @@ export class App extends Component {
       this.lrcArea.rerender()
       this.cursor.reset()
       this.lrcArea.restartCursorTimer()
+      this.sideBar.blockForm.onCursorChange()
     }
     reader.readAsArrayBuffer(e.target.files[0])
   }

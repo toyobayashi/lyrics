@@ -1,4 +1,5 @@
 import { Component, Emitter } from '../util.js'
+import { BlockForm } from './BlockForm.js'
 
 /**
  * @extends {Component<HTMLDivElement>}
@@ -84,6 +85,8 @@ export class SideBar extends Component {
     this.soundVideo.setAttribute('width', '400')
     div.appendChild(this.soundVideo)
     domNode.appendChild(div)
+
+    this.blockForm = this._register(new BlockForm(domNode, null))
 
     container.appendChild(domNode)
   }
