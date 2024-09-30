@@ -17,6 +17,7 @@ export class LrcArea extends Component {
             Array.prototype.indexOf.call(target.parentElement.children, target),
             0
           )
+          this.restartCursorTimer()
         }
       } else if (target.tagName === 'RT') {
         const rubyElement = target.parentElement
@@ -26,6 +27,7 @@ export class LrcArea extends Component {
             Array.prototype.indexOf.call(rubyElement.parentElement.children, rubyElement),
             0
           )
+          this.restartCursorTimer()
         }
       } else if (target.tagName === 'SPAN') {
         const rubyElement = target.parentElement.parentElement
@@ -33,13 +35,14 @@ export class LrcArea extends Component {
           this.cursor.set(
             Array.prototype.indexOf.call(rubyElement.parentElement.parentElement.children, rubyElement.parentElement),
             Array.prototype.indexOf.call(rubyElement.parentElement.children, rubyElement),
-            Array.prototype.indexOf.call(target.parentElement.children, target)
+            this.cursor.enableRuby ? Array.prototype.indexOf.call(target.parentElement.children, target) : 0
           )
+          this.restartCursorTimer()
         }
-      } else {
+      }/*  else {
         this.clearCursorStyle()
         this._cursorCurrent = null
-      }
+      } */
     })
 
     this.globalSettings = globalSettings
@@ -66,6 +69,9 @@ export class LrcArea extends Component {
 
   onDidCursorChange () {
     this.restartCursorTimer()
+    const { blockEl } = this.getCursorElements()
+    const scrollTop = blockEl.offsetTop - window.innerHeight / 2
+    document.documentElement.scrollTo({ top: scrollTop, behavior: 'smooth' })
   }
 
   renderCursorElement (showCursorStyle) {
@@ -83,12 +89,94 @@ export class LrcArea extends Component {
     }
   }
 
+  updateBlockElementStyle (filled) {
+    const { blockEl } = this.getCursorElements()
+    blockEl.style.outline = filled ? this.globalSettings.filledBlockBorderStyle : this.globalSettings.unFilledBlockBorderStyle
+    blockEl.style.color = filled ? this.globalSettings.filledBlockTextColor : this.globalSettings.unFilledBlockTextColor
+  }
+
+  updateRubyElementStyle (index, filled) {
+    const { blockEl } = this.getCursorElements()
+    const rubyEl = this.cursor.lrc.data[this.cursor.row][this.cursor.col].ruby ? blockEl.children[0].children[index] : null
+    rubyEl.style.outline = filled ? this.globalSettings.filledBlockBorderStyle : this.globalSettings.unFilledBlockBorderStyle
+    rubyEl.style.color = filled ? this.globalSettings.filledBlockTextColor : this.globalSettings.unFilledBlockTextColor
+  }
+
   clear () {
     this.domNode.innerHTML = ''
   }
 
   get (row, col) {
     return this.domNode.children[row].children[col]
+  }
+
+  setBlockElementText (row, col, text) {
+    this.domNode.children[row].children[col].childNodes[0].textContent = text
+  }
+
+  deleteBlockElement (row, col) {
+    const r = this.domNode.children[row]
+    r.removeChild(r.children[col])
+  }
+
+  addBlockElement (row, col, text) {
+    const typeofRow = typeof row
+    const rowElement = typeofRow === 'number' || typeofRow === 'string' ? this.domNode.children[row] : row
+    const blockElement = document.createElement('ruby')
+    // blockElement.style.display = 'inline-block'
+    blockElement.style.height = '56px'
+    blockElement.style.boxSizing = 'border-box'
+    blockElement.style.padding = '24px 8px 8px 8px'
+    blockElement.style.margin = '2px'
+    blockElement.style.verticalAlign = 'bottom'
+    blockElement.textContent = text || ''
+    blockElement.style.outline = this.globalSettings.unFilledBlockBorderStyle
+    blockElement.style.color = this.globalSettings.unFilledBlockTextColor
+    rowElement.insertBefore(blockElement, col != null ? (rowElement.children[col + 1] || null) : null)
+    return blockElement
+  }
+
+  setRubyElementText (row, col, rubyIndex, text) {
+    const rt = this.domNode.children[row].children[col].children[0]
+    rt.children[rubyIndex].textContent = text
+  }
+
+  deleteRubyElement (row, col, rubyIndex) {
+    const rt = this.domNode.children[row].children[col].children[0]
+    rt.removeChild(rt.children[rubyIndex])
+    if (rt.children.length === 0) {
+      this.domNode.children[row].children[col].removeChild(rt)
+    }
+  }
+
+  addRubyElement (row, col, rubyIndex, text) {
+    const typeofRow = typeof row
+    const typeofCol = typeof col
+    const colElement = typeofCol === 'number' || typeofCol === 'string'
+      ? (typeofRow === 'number' || typeofRow === 'string' ? this.domNode.children[row] : row).children[col]
+      : col
+
+    let rt
+    if (colElement.children.length === 0) {
+      rt = document.createElement('rt')
+      colElement.appendChild(rt)
+    } else {
+      rt = colElement.children[0]
+    }
+    const rubyCharElement = document.createElement('span')
+    rubyCharElement.style.height = '20px'
+    rubyCharElement.style.verticalAlign = 'bottom'
+    rubyCharElement.style.display = 'inline-block'
+    rubyCharElement.style.outline = this.globalSettings.unFilledBlockBorderStyle
+    rubyCharElement.style.color = this.globalSettings.unFilledBlockTextColor
+    rubyCharElement.style.boxSizing = 'border-box'
+    rubyCharElement.style.padding = '1px'
+    rubyCharElement.style.margin = '0 1px'
+    rubyCharElement.style.position = 'relative'
+    rubyCharElement.style.bottom = '2px'
+    rubyCharElement.textContent = text || ''
+    rt.insertBefore(rubyCharElement, rubyIndex != null ? (rt.children[rubyIndex + 1] || null) : null)
+    return rubyCharElement
   }
 
   setLrc (lrc) {
@@ -106,37 +194,17 @@ export class LrcArea extends Component {
       p.style.margin = '20px 0'
       p.style.fontSize = '24px'
       line.forEach((block, col) => {
-        const blockElement = document.createElement('ruby')
-        // blockElement.style.display = 'inline-block'
-        // blockElement.style.height = '40px'
-        blockElement.style.boxSizing = 'border-box'
-        blockElement.style.padding = '24px 8px 8px 8px'
-        blockElement.style.margin = '2px'
-        blockElement.style.verticalAlign = 'bottom'
-        blockElement.textContent = block.word
-
-        p.appendChild(blockElement)
+        const blockElement = this.addBlockElement(p, col, block.word)
 
         blockElement.style.outline = block.time != null ? this.globalSettings.filledBlockBorderStyle : this.globalSettings.unFilledBlockBorderStyle
         blockElement.style.color = block.time != null ? this.globalSettings.filledBlockTextColor : this.globalSettings.unFilledBlockTextColor
 
         if (block.ruby) {
-          const rubyElement = document.createElement('rt')
           for (let i = 0; i < block.ruby.length; i++) {
-            const rubyCharElement = document.createElement('span')
-            rubyCharElement.style.display = 'inline-block'
-            rubyCharElement.style.outline = this.globalSettings.unFilledBlockBorderStyle
+            const rubyCharElement = this.addRubyElement(null, blockElement, i, block.ruby[i].word)
             rubyCharElement.style.outline = block.ruby[i].time != null ? this.globalSettings.filledBlockBorderStyle : this.globalSettings.unFilledBlockBorderStyle
             rubyCharElement.style.color = block.ruby[i].time != null ? this.globalSettings.filledBlockTextColor : this.globalSettings.unFilledBlockTextColor
-            rubyCharElement.style.boxSizing = 'border-box'
-            rubyCharElement.style.padding = '1px'
-            rubyCharElement.style.margin = '0 1px'
-            rubyCharElement.style.position = 'relative'
-            rubyCharElement.style.bottom = '2px'
-            rubyCharElement.textContent = block.ruby[i].word
-            rubyElement.appendChild(rubyCharElement)
           }
-          blockElement.appendChild(rubyElement)
         }
       })
       this.domNode.appendChild(p)

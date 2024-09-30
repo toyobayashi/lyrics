@@ -1,3 +1,5 @@
+// import { Emitter } from './util.js'
+
 const timeToString = time => `${`0${Math.floor(time / 60)}`.slice(-2)}:${`0${Math.floor(time % 60)}`.slice(-2)}:${`0${Math.floor((time % 1) * 100)}`.slice(-2)}`
 
 const stringToTime = string => {

@@ -33,6 +33,11 @@ export class App extends Component {
     this._register(this.sideBar.onDidLrcInputChange(this.onDidLrcInputChange, this))
     this._register(this.cursor.onDidEnableRubyChange(this.onDidEnableRubyChange, this))
     this._addEventListener(document, 'keydown', this.onDidKeydown.bind(this), false)
+    this._register(this.sideBar.blockForm.onDidInput(this.onDidFormInput, this))
+    this._register(this.sideBar.blockForm.onDidAddRubyClick(this.onDidAddRubyClick, this))
+    this._register(this.sideBar.blockForm.onDidAddClick(this.onDidAddClick, this))
+    this._register(this.sideBar.blockForm.onDidDeleteRubyClick(this.onDidDeleteRubyClick, this))
+    this._register(this.sideBar.blockForm.onDidDeleteClick(this.onDidDeleteClick, this))
   }
 
   dispose () {
@@ -47,11 +52,67 @@ export class App extends Component {
   }
 
   /**
+   * @param {Event} e 
+   */
+  onDidFormInput (e) {
+    if (e.target instanceof HTMLInputElement) {
+      const isInRubyList = e.target.parentElement.parentElement instanceof HTMLLIElement
+      const key = e.target.previousSibling.textContent
+      const value = key === 'time' ? e.target.value === '' ? null : Number(e.target.value) : e.target.value
+      if (isInRubyList) {
+        const index = Array.prototype.indexOf.call(e.target.parentElement.parentElement.parentElement.children, e.target.parentElement.parentElement)
+        this.lrcData[this.cursor.row][this.cursor.col].ruby[index][key] = value
+        if (key === 'word') {
+          this.lrcArea.setRubyElementText(this.cursor.row, this.cursor.col, index, value)
+        } else if (key === 'time') {
+          this.lrcArea.updateRubyElementStyle(index, value != null)
+        }
+      } else {
+        this.lrcData[this.cursor.row][this.cursor.col][key] = value
+        if (key === 'word') {
+          this.lrcArea.setBlockElementText(this.cursor.row, this.cursor.col, value)
+        } else if (key === 'time') {
+          this.lrcArea.updateBlockElementStyle(value != null)
+        }
+      }
+    }
+  }
+
+  onDidAddRubyClick (index) {
+    const block = this.lrcData[this.cursor.row][this.cursor.col]
+    if (!block.ruby) block.ruby = []
+    if (index != null) {
+      block.ruby.splice(index + 1, 0, { word: '', time: null })
+      this.lrcArea.addRubyElement(this.cursor.row, this.cursor.col, index)
+    } else {
+      block.ruby.push({ word: '', time: null })
+      this.lrcArea.addRubyElement(this.cursor.row, this.cursor.col, block.ruby.length - 1)
+    }
+  }
+
+  onDidAddClick () {
+    this.lrcData[this.cursor.row].splice(this.cursor.col + 1, 0, { word: '', time: null })
+    this.lrcArea.addBlockElement(this.cursor.row, this.cursor.col)
+    this.cursor.right()
+  }
+
+  onDidDeleteRubyClick (index) {
+    this.lrcData[this.cursor.row][this.cursor.col].ruby.splice(index, 1)
+    this.lrcArea.deleteRubyElement(this.cursor.row, this.cursor.col, index)
+  }
+
+  onDidDeleteClick () {
+    this.lrcData[this.cursor.row].splice(this.cursor.col, 1)
+    this.lrcArea.deleteBlockElement(this.cursor.row, this.cursor.col)
+    this.lrcArea.restartCursorTimer()
+  }
+
+  /**
    * @param {boolean} value
    */
   onDidEnableRubyChange (value) {
     this.sideBar.enableRubyInput.checked = value
-    this.lrcArea.onDidCursorChange()
+    this.lrcArea.restartCursorTimer()
   }
 
   /**
