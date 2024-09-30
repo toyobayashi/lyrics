@@ -1,9 +1,11 @@
 import { Lyrics } from './lyrics.js'
 import { Cursor } from './cursor.js'
-import { Component } from './util.js'
+import { Component, Emitter } from './util.js'
 
 import { SideBar } from './components/SideBar.js'
 import { LrcArea } from './components/LrcArea.js'
+
+import { decode, encode } from 'iconv-lite'
 
 /**
  * @extends {Component<HTMLDivElement>}
@@ -121,7 +123,7 @@ export class App extends Component {
   onDidLrcInputChange (e) {
     const reader = new FileReader()
     reader.onload = (e) => {
-      const lrcText = new TextDecoder(this.sideBar.encoding).decode(new Uint8Array(e.target.result))
+      const lrcText = decode(new Uint8Array(e.target.result), this.sideBar.encoding)
       this.lrc = Lyrics.parse(lrcText)
       console.log(this.lrc)
       this.cursor.lrc = this.lrc
@@ -138,6 +140,7 @@ export class App extends Component {
    */
   onDidKeydown (e) {
     console.log(e.key)
+    if (!this.lrc) return
     if (e.key === 'ArrowRight') {
       e.preventDefault()
       this.cursor.right()
@@ -163,6 +166,43 @@ export class App extends Component {
       this.lrcArea.recordTime(currentTime)
     } else if (e.key === 'Enter') {
       console.log(this.lrc.toString())
+    } else if (e.key === 's' && (navigator.userAgent.includes('Mac') ? e.metaKey : e.ctrlKey)) {
+      e.preventDefault()
+      console.log('save')
+      this.saveLrcFile()
     }
+  }
+
+  saveLrcFile () {
+    const buffer = encode(this.lrc.toString(), this.sideBar.encoding)
+    
+    if (window.showOpenFilePicker) {
+      window.showSaveFilePicker({
+        startIn: 'documents',
+        suggestedName: this.sideBar.lrcInput.files[0].name,
+        types: [
+          {
+            description: 'Lyrics',
+            accept: {
+              'text/plain': ['.lrc', '.txt']
+            }
+          }
+        ]
+      }).then((file) => {
+        file.createWritable().then((stream) => {
+          stream.write(buffer)
+          stream.close()
+        })
+      })
+      return
+    }
+    
+    const blob = new Blob([buffer])
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = this.sideBar.lrcInput.files[0].name
+    a.click()
+    a.remove()
   }
 }

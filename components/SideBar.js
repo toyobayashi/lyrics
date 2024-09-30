@@ -25,7 +25,7 @@ export class SideBar extends Component {
     let span = document.createElement('span')
     span.textContent = 'encoding: '
     this.encodingSelect = document.createElement('select')
-    ;['shift-jis', 'utf-8'].forEach((enc) => {
+    ;['Shift_JIS', 'utf8'].forEach((enc) => {
       const option = document.createElement('option')
       option.value = enc
       option.textContent = enc
